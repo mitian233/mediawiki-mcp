@@ -1,6 +1,6 @@
 {
     "name": "mediawiki-mcp-server",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Model Context Protocol server for MediaWiki Parse API integration",
     "main": "build/index.js",
     "type": "module",
