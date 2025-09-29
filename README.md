@@ -72,9 +72,25 @@ npm run build
 
 ### 运行服务器
 
+#### STDIO Transport (默认)
+
 ```bash
 npm start
+# 或
+node build/index.js
 ```
+
+#### SSE Transport
+
+```bash
+node build/index.js --transport sse --port 3000
+```
+
+**命令行选项：**
+
+- `--transport <type>`: 传输方式，可选 `stdio` (默认) 或 `sse`
+- `--port <number>`: SSE 传输的端口号，默认 3000
+- `--host <host>`: SSE 传输的主机地址，默认 localhost
 
 ### 开发模式
 
@@ -86,12 +102,33 @@ npm run dev
 
 要在 Claude Desktop 中使用此 MCP 服务器，请将以下配置添加到您的`claude_desktop_config.json`文件中：
 
+#### STDIO Transport 配置：
+
 ```json
 {
   "mcpServers": {
     "mediawiki": {
       "command": "node",
       "args": ["/path/to/mediawiki-mcp/build/index.js"]
+    }
+  }
+}
+```
+
+#### SSE Transport 配置：
+
+```json
+{
+  "mcpServers": {
+    "mediawiki": {
+      "command": "node",
+      "args": [
+        "/path/to/mediawiki-mcp/build/index.js",
+        "--transport",
+        "sse",
+        "--port",
+        "3000"
+      ]
     }
   }
 }

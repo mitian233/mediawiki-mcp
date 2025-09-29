@@ -2,7 +2,9 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { z } from "zod";
+import { Command } from "commander";
 
 // MediaWiki API 基础配置
 const DEFAULT_MEDIAWIKI_API = "https://zh.wikipedia.org/w/api.php";
@@ -434,11 +436,103 @@ server.tool(
   }
 );
 
+// CLI 参数配置
+const program = new Command();
+program
+  .name("mediawiki-mcp")
+  .description(
+    "MediaWiki MCP Server - Model Context Protocol server for MediaWiki Parse API integration"
+  )
+  .version("1.0.0")
+  .option("-t, --transport <type>", "Transport type: stdio or sse", "stdio")
+  .option(
+    "-p, --port <number>",
+    "Port for SSE transport (default: 3000)",
+    "3000"
+  )
+  .option(
+    "--host <host>",
+    "Host for SSE transport (default: localhost)",
+    "localhost"
+  )
+  .parse();
+
+const options = program.opts();
+
 // 启动服务器
 async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("MediaWiki MCP Server running on stdio");
+  const transportType = options.transport.toLowerCase();
+
+  if (transportType === "sse") {
+    // SSE transport needs an HTTP server
+    const express = await import("express");
+    const http = await import("http");
+
+    const app = express.default();
+    app.use(express.default.json());
+
+    // Store transports by session ID
+    const transports: Record<string, SSEServerTransport> = {};
+
+    // SSE endpoint for establishing the stream
+    app.get("/sse", async (req: any, res: any) => {
+      console.error("Establishing SSE connection...");
+
+      // Create SSE transport with the correct parameters
+      const transport = new SSEServerTransport("/messages", res);
+
+      // Store the transport by session ID
+      const sessionId = transport.sessionId;
+      transports[sessionId] = transport;
+
+      // Set up onclose handler
+      transport.onclose = () => {
+        console.error(`SSE transport closed for session ${sessionId}`);
+        delete transports[sessionId];
+      };
+
+      // Connect to server
+      await server.connect(transport);
+      console.error(`SSE session established: ${sessionId}`);
+    });
+
+    // Messages endpoint for POST requests
+    app.post("/messages", async (req: any, res: any) => {
+      const sessionId = req.query.sessionId as string;
+      const transport = transports[sessionId];
+
+      if (!transport) {
+        res.status(404).send("Session not found");
+        return;
+      }
+
+      try {
+        await transport.handlePostMessage(req, res, req.body);
+      } catch (error) {
+        console.error("Error handling message:", error);
+        if (!res.headersSent) {
+          res.status(500).send("Internal server error");
+        }
+      }
+    });
+
+    const httpServer = http.createServer(app);
+    const port = parseInt(options.port);
+
+    httpServer.listen(port, () => {
+      console.error(`MediaWiki MCP server running on http://localhost:${port}`);
+      console.error(`SSE endpoint: http://localhost:${port}/sse`);
+      console.error(`Messages endpoint: http://localhost:${port}/messages`);
+    });
+  } else if (transportType === "stdio") {
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+    console.error("MediaWiki MCP Server running on stdio");
+  } else {
+    console.error(`Unsupported transport type: ${transportType}`);
+    console.error("Supported types: stdio, sse");
+    process.exit(1);
+  }
 }
 
 main().catch((error) => {
